@@ -8,7 +8,7 @@ let TG = 0; //小白勿动， 开发者专用，1 为推送所有的访问信息
 let FileName = 'JNFW流量服务';
 let SUBUpdateTime = 12; //自定义订阅更新时间，单位小时
 let total = 10;//TB
-let timestamp = 1772208000000;//2026-12-31
+let timestamp = 1772208000000;//2026-02-28
 
 //节点链接 + 订阅链接
 let MainData = `
@@ -647,3 +647,4 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		return new Response("服务器错误: " + error.message, { status: 500, headers: { "Content-Type": "text/plain;charset=utf-8" } });
 	}
 }
+
