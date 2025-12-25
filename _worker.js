@@ -1,4 +1,3 @@
-
 // 部署完成后在网址后面加上这个，获取自建节点和机场聚合节点，/?token=auto或/auto或
 
 let mytoken = 'auto';
@@ -50,9 +49,13 @@ export default {
 		const 访客订阅 = guestToken;
 		//console.log(`${fakeUserID}\n${fakeHostName}`); // 打印fakeID
 
-		let UD = Math.floor(((timestamp - Date.now()) / timestamp * total * 1099511627776) / 2);
-		total = total * 1099511627776;
+		// --- 修改开始：修正流量计算逻辑，避免污染全局 total 变量 ---
+		let totalBytes = total * 1099511627776;
+		let UD = Math.floor(((timestamp - Date.now()) / timestamp * totalBytes) / 2);
+		// 原代码这里修改了全局变量 total，导致二次请求出错，现已移除：total = total * 1099511627776; 
 		let expire = Math.floor(timestamp / 1000);
+		// --- 修改结束 ---
+
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
 
 		if (!([mytoken, fakeToken, 访客订阅].includes(token) || url.pathname == ("/" + mytoken) || url.pathname.includes("/" + mytoken + "?"))) {
@@ -185,7 +188,9 @@ export default {
 				"content-type": "text/plain; charset=utf-8",
 				"Profile-Update-Interval": `${SUBUpdateTime}`,
 				"Profile-web-page-url": request.url.includes('?') ? request.url.split('?')[0] : request.url,
-				//"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${total}; expire=${expire}`,
+				// --- 修改开始：启用流量头部，使用 totalBytes ---
+				"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${totalBytes}; expire=${expire}`,
+				// --- 修改结束 ---
 			};
 
 			if (订阅格式 == 'base64' || token == fakeToken) {
