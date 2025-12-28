@@ -1,3 +1,5 @@
+// --- START OF FILE text/javascript ---
+
 // 部署完成后在网址后面加上这个，获取自建节点和机场聚合节点，/?token=auto或/auto或
 
 let mytoken = 'auto';
@@ -7,8 +9,12 @@ let ChatID = ''; //可以为空，或者@userinfobot中获取，/start
 let TG = 0; //小白勿动， 开发者专用，1 为推送所有的访问信息，0 为不推送订阅转换后端的访问信息与异常访问
 let FileName = 'JNFW流量服务';
 let SUBUpdateTime = 12; //自定义订阅更新时间，单位小时
-let total = 10;//TB
-let timestamp = 1772208000000;//2026-02-28
+
+// --- 流量配置区域 ---
+let total = 5; // 每月总流量 (TB)
+// 订阅过期日期 (格式: YYYY-MM-DD)
+let expireDate = '2026-02-28'; 
+// --------------------
 
 //节点链接 + 订阅链接
 let MainData = `
@@ -26,19 +32,27 @@ export default {
 		const userAgent = userAgentHeader ? userAgentHeader.toLowerCase() : "null";
 		const url = new URL(request.url);
 		const token = url.searchParams.get('token');
+		
+		// 环境变量注入
 		mytoken = env.TOKEN || mytoken;
 		BotToken = env.TGTOKEN || BotToken;
 		ChatID = env.TGID || ChatID;
 		TG = env.TG || TG;
 		subConverter = env.SUBAPI || subConverter;
+		subConfig = env.SUBCONFIG || subConfig;
+		FileName = env.SUBNAME || FileName;
+		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
+		
+		// 流量相关环境变量覆盖 (可选)
+		if (env.TOTAL_TB) total = parseFloat(env.TOTAL_TB);
+		if (env.EXPIRE_DATE) expireDate = env.EXPIRE_DATE;
+
 		if (subConverter.includes("http://")) {
 			subConverter = subConverter.split("//")[1];
 			subProtocol = 'http';
 		} else {
 			subConverter = subConverter.split("//")[1] || subConverter;
 		}
-		subConfig = env.SUBCONFIG || subConfig;
-		FileName = env.SUBNAME || FileName;
 
 		const currentDate = new Date();
 		currentDate.setHours(0, 0, 0, 0);
@@ -48,18 +62,53 @@ export default {
 		if (!guestToken) guestToken = await MD5MD5(mytoken);
 		const 访客订阅 = guestToken;
 
-		// --- 流量计算逻辑优化 ---
-		// 使用局部变量避免污染全局 total，修复数值计算错误
-		let totalBytes = total * 1099511627776;
-		// 模拟已用流量（随时间增加）
-		let UD = Math.floor(((timestamp - Date.now()) / timestamp * totalBytes) / 2);
-		let expire = Math.floor(timestamp / 1000);
-		// ----------------------
+		// --- 流量计算逻辑优化 (保留20%余量版本) ---
+		const totalBytes = total * 1099511627776; // TB转换为字节
+		
+		// 1. 处理过期时间字符串 -> 时间戳
+		let timestamp = 0;
+		try {
+			timestamp = new Date(expireDate).getTime();
+			if (isNaN(timestamp)) timestamp = 4102444800000; // 2100-01-01
+		} catch (e) {
+			timestamp = 4102444800000;
+		}
 
-		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
+		// 2. 计算本月用量进度
+		const now = new Date();
+		let usedData = 0;
+
+		if (now.getTime() > timestamp) {
+			// 如果已经超过订阅总过期时间，显示流量已用尽
+			usedData = totalBytes;
+		} else {
+			// 获取本月的第一天和下个月的第一天
+			const currentYear = now.getFullYear();
+			const currentMonth = now.getMonth(); // 0-11
+			
+			const startOfMonth = new Date(currentYear, currentMonth, 1).getTime();
+			const startOfNextMonth = new Date(currentYear, currentMonth + 1, 1).getTime();
+			
+			// 本月总毫秒数
+			const monthDuration = startOfNextMonth - startOfMonth;
+			// 本月已过毫秒数
+			const elapsedInMonth = now.getTime() - startOfMonth;
+			
+			// 计算本月时间进度比例 (0.0 - 1.0)
+			const ratio = elapsedInMonth / monthDuration;
+			
+			// 修改点：乘以 0.8，确保即使到月底也只显示用了 80% 的流量
+			// 这样用户永远看到还有 20% 以上的剩余流量
+			usedData = Math.floor(totalBytes * ratio * 0.8);
+		}
+		
+		// UD用于显示
+		let upload = Math.floor(usedData * 0.1);
+		let download = Math.floor(usedData * 0.9);
+		let expire = Math.floor(timestamp / 1000); 
+		// ------------------------------------
 
 		if (!([mytoken, fakeToken, 访客订阅].includes(token) || url.pathname == ("/" + mytoken) || url.pathname.includes("/" + mytoken + "?"))) {
-			// 优化：使用 ctx.waitUntil 异步发送通知，不阻塞主请求
 			if (TG == 1 && url.pathname !== "/" && url.pathname !== "/favicon.ico") {
 				ctx.waitUntil(sendMessage(`#异常访问 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgent}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`));
 			}
@@ -75,8 +124,7 @@ export default {
 		} else {
 			if (env.KV) {
 				await 迁移地址列表(env, 'LINK.txt');
-				if (userAgent.includes('mozilla') && !url.search) {
-					// 优化：异步发送编辑通知
+				if (userAgent.includes('mozilla') && !url.search && token !== guestToken && !url.pathname.includes(guestToken)) {
 					ctx.waitUntil(sendMessage(`#编辑订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`));
 					return await KV(request, env, 'LINK.txt', 访客订阅);
 				} else {
@@ -99,7 +147,6 @@ export default {
 			MainData = 自建节点;
 			urls = await ADD(订阅链接);
 			
-			// 优化：异步发送获取订阅通知
 			ctx.waitUntil(sendMessage(`#获取订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`));
 
 			const isSubConverterRequest = request.headers.get('subconverter-request') || request.headers.get('subconverter-version') || userAgent.includes('subconverter');
@@ -130,10 +177,9 @@ export default {
 			else if (url.searchParams.has('quanx')) 追加UA = 'Quantumult%20X';
 			else if (url.searchParams.has('loon')) 追加UA = 'Loon';
 
-			const 订阅链接数组 = [...new Set(urls)].filter(item => item?.trim?.()); // 去重
+			const 订阅链接数组 = [...new Set(urls)].filter(item => item?.trim?.());
 			if (订阅链接数组.length > 0) {
 				const 请求订阅响应内容 = await getSUB(订阅链接数组, request, 追加UA, userAgentHeader);
-				console.log(请求订阅响应内容);
 				req_data += 请求订阅响应内容[0].join('\n');
 				订阅转换URL += "|" + 请求订阅响应内容[1];
 				if (订阅格式 == 'base64' && !isSubConverterRequest && 请求订阅响应内容[1].includes('://')) {
@@ -151,13 +197,12 @@ export default {
 			}
 
 			if (env.WARP) 订阅转换URL += "|" + (await ADD(env.WARP)).join("|");
-			//修复中文错误
+			
 			const utf8Encoder = new TextEncoder();
 			const encodedData = utf8Encoder.encode(req_data);
 			const utf8Decoder = new TextDecoder();
 			const text = utf8Decoder.decode(encodedData);
 
-			//去重
 			const uniqueLines = new Set(text.split('\n'));
 			const result = [...uniqueLines].join('\n');
 
@@ -169,22 +214,18 @@ export default {
 					const binary = new TextEncoder().encode(data);
 					let base64 = '';
 					const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
 					for (let i = 0; i < binary.length; i += 3) {
 						const byte1 = binary[i];
 						const byte2 = binary[i + 1] || 0;
 						const byte3 = binary[i + 2] || 0;
-
 						base64 += chars[byte1 >> 2];
 						base64 += chars[((byte1 & 3) << 4) | (byte2 >> 4)];
 						base64 += chars[((byte2 & 15) << 2) | (byte3 >> 6)];
 						base64 += chars[byte3 & 63];
 					}
-
 					const padding = 3 - (binary.length % 3 || 3);
 					return base64.slice(0, base64.length - padding) + '=='.slice(0, padding);
 				}
-
 				base64Data = encodeBase64(result)
 			}
 
@@ -193,8 +234,8 @@ export default {
 				"content-type": "text/plain; charset=utf-8",
 				"Profile-Update-Interval": `${SUBUpdateTime}`,
 				"Profile-web-page-url": request.url.includes('?') ? request.url.split('?')[0] : request.url,
-				// --- 启用流量头部信息 ---
-				"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${totalBytes}; expire=${expire}`,
+				// --- 启用并更新流量头部信息 ---
+				"Subscription-Userinfo": `upload=${upload}; download=${download}; total=${totalBytes}; expire=${expire}`,
 			};
 
 			if (订阅格式 == 'base64' || token == fakeToken) {
@@ -302,7 +343,6 @@ async function MD5MD5(text) {
 	return secondHex.toLowerCase();
 }
 
-// 优化：使用正则全局替换，比逐行遍历效率更高
 function clashFix(content) {
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		return content.replace(/type: wireguard/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
@@ -647,4 +687,3 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		return new Response("服务器错误: " + error.message, { status: 500, headers: { "Content-Type": "text/plain;charset=utf-8" } });
 	}
 }
-
