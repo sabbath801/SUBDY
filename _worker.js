@@ -2,18 +2,19 @@
 
 // 部署完成后在网址后面加上这个，获取自建节点和机场聚合节点，/?token=auto或/auto或
 
-let mytoken = 'auto';
+let mytoken = 'auto';环境变量中设置TOKEN，这里的设置会被覆盖
 let guestToken = ''; //可以随便取，或者uuid生成，https://1024tools.com/uuid
 let BotToken = ''; //可以为空，或者@BotFather中输入/start，/newbot，并关注机器人
 let ChatID = ''; //可以为空，或者@userinfobot中获取，/start
 let TG = 0; //小白勿动， 开发者专用，1 为推送所有的访问信息，0 为不推送订阅转换后端的访问信息与异常访问
-let FileName = 'JNFW流量服务';
+let FileName = 'JNFW流量';// 如果在环境变量中设置了 SUBNAME，这里的设置会被覆盖
 let SUBUpdateTime = 12; //自定义订阅更新时间，单位小时
 
 // --- 流量配置区域 ---
 let total = 2; // 每月总流量 (TB)
-// 订阅过期日期 (格式: YYYY-MM-DD)
-let expireDate = '2026-02-28'; 
+// 默认过期日期 (格式: YYYY-MM-DD)
+// 如果在环境变量中设置了 EXPIRE_DATE，这里的设置会被覆盖
+let expireDate = '2099-12-30'; 
 // --------------------
 
 //节点链接 + 订阅链接
@@ -33,7 +34,7 @@ export default {
 		const url = new URL(request.url);
 		const token = url.searchParams.get('token');
 		
-		// 环境变量注入
+		// --- 环境变量注入区域 ---
 		mytoken = env.TOKEN || mytoken;
 		BotToken = env.TGTOKEN || BotToken;
 		ChatID = env.TGID || ChatID;
@@ -43,9 +44,12 @@ export default {
 		FileName = env.SUBNAME || FileName;
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
 		
-		// 流量相关环境变量覆盖 (可选)
+		// 新增：支持通过环境变量 EXPIRE_DATE 修改过期时间
+		expireDate = env.EXPIRE_DATE || expireDate;
+		
+		// 流量相关环境变量覆盖 (保留旧写法兼容)
 		if (env.TOTAL_TB) total = parseFloat(env.TOTAL_TB);
-		if (env.EXPIRE_DATE) expireDate = env.EXPIRE_DATE;
+		// -----------------------
 
 		if (subConverter.includes("http://")) {
 			subConverter = subConverter.split("//")[1];
@@ -62,7 +66,7 @@ export default {
 		if (!guestToken) guestToken = await MD5MD5(mytoken);
 		const 访客订阅 = guestToken;
 
-		// --- 流量计算逻辑优化 (保留20%余量版本) ---
+		// --- 流量计算逻辑优化 (每月清零 + 保留20%余量) ---
 		const totalBytes = total * 1099511627776; // TB转换为字节
 		
 		// 1. 处理过期时间字符串 -> 时间戳
@@ -97,8 +101,7 @@ export default {
 			// 计算本月时间进度比例 (0.0 - 1.0)
 			const ratio = elapsedInMonth / monthDuration;
 			
-			// 修改点：乘以 0.8，确保即使到月底也只显示用了 80% 的流量
-			// 这样用户永远看到还有 20% 以上的剩余流量
+			// 乘以 0.8，确保即使到月底也只显示用了 80% 的流量
 			usedData = Math.floor(totalBytes * ratio * 0.8);
 		}
 		
@@ -687,5 +690,3 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		return new Response("服务器错误: " + error.message, { status: 500, headers: { "Content-Type": "text/plain;charset=utf-8" } });
 	}
 }
-
-
