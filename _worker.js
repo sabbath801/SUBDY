@@ -11,9 +11,9 @@ let FileName = 'JNFW流量服务';
 let SUBUpdateTime = 12; //自定义订阅更新时间，单位小时
 
 // --- 流量配置区域 ---
-let total = 5; // 每月总流量 (TB)
+let total = 2; // 每月总流量 (TB)
 // 订阅过期日期 (格式: YYYY-MM-DD)
-let expireDate = '2026-03-31'; 
+let expireDate = '2026-02-28'; 
 // --------------------
 
 //节点链接 + 订阅链接
@@ -687,4 +687,5 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		return new Response("服务器错误: " + error.message, { status: 500, headers: { "Content-Type": "text/plain;charset=utf-8" } });
 	}
 }
+
 
